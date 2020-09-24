@@ -91,28 +91,62 @@ inline bool extract(const std::basic_string<CharT> & value, std::basic_string<Ch
 	return true;
 }
 
-template <typename CharT>
-class CharGettable
+class CharTEBase
 {
 public:
-	CharGettable() = default;
-	virtual ~CharGettable() = default;
+	CharTEBase() = default;
+	virtual ~CharTEBase() = default;
 
-	void set_char(const CharT* chPtr) const
+	virtual bool equals(const void* other) const = 0;
+};
+
+template<typename CHAR>
+class TEChar : public CharTEBase
+{
+public:
+	TEChar(const CHAR c) : m_char(c) {};
+	virtual ~TEChar() = default;
+
+	virtual bool equals(const void* other) const override
 	{
-		m_char = chPtr;
-	}
-	void reset_char() const
-	{
-		return set_char(nullptr);
+		bool ret = (m_char && other);
+		if(ret)
+		{
+			ret = (*m_char == *static_cast<CHAR>(other));
+		}
+		return ret;
 	}
 
-	const CharT* const get_char() const
+protected:
+	const CHAR m_char;
+
+private:
+	TEChar() = default;
+};
+
+class CharTypeErased
+{
+public:	
+	template<typename CHAR>
+	CharTypeErased(const CHAR ch) : m_ch(new TEChar<CHAR>(ch))
+	{}
+
+	virtual ~CharTypeErased()
 	{
-		return m_char;
+		delete m_ch;
 	}
 
-	mutable const CharT* m_char = nullptr;
+	template <typename CHAR>
+	bool equals(const CHAR& other) const
+	{
+		return m_ch->equals(&other);
+	}
+
+protected:
+	CharTEBase* m_ch = nullptr;
+
+private:
+	CharTypeErased() = default;
 };
 
 template <typename CharT>
@@ -122,11 +156,11 @@ public:
 	CommentCheckable() = default;
 	virtual ~CommentCheckable() = default;
 
-	virtual bool check_char_is_comment() const = 0;
+	virtual bool is_comment(const CharTypeErased& che) const = 0;
 };
 
 template<class CharT>
-class Ini : protected CommentCheckable<CharT>, protected CharGettable<CharT>
+class Ini : protected CommentCheckable<CharT>
 {
 public:
 	typedef std::basic_string<CharT> String;
@@ -171,7 +205,7 @@ public:
 			if (length > 0) {
 				const auto pos = line.find_first_of(char_assign);
 				const auto & front = line.front();
-				if (is_comment(front)) {
+				if (is_comment(CharTypeErased(&front))) {
 					continue;
 				}
 				else if (front == char_section_start) {
@@ -223,20 +257,11 @@ public:
 		sections.clear();
 		errors.clear();
 	}
+
 protected:
-	
-	bool is_comment(const CharT& ch) const
+	virtual bool is_comment(const CharTypeErased& che) const override
 	{
-		set_char(&ch);
-		bool ret = check_char_is_comment();
-		reset_char();
-
-		return ret;
-	}
-
-	virtual bool check_char_is_comment() const override
-	{
-		return *(get_char()) == char_comment;
+		return che.equals(char_comment);
 	}
 
 private:
@@ -276,3 +301,37 @@ private:
 };
 
 } // namespace inipp
+
+ /* Usage for extending inipp::Ini<CharT>:
+
+ #include <array>
+// VisualbasicIni.h
+class VisualBasicIni : public inipp::Ini<char>
+{
+public:
+	VisualBasicIni() = default;
+	virtual ~VisualBasicIni() = default;
+
+protected:
+	//This one for demo only, could be whatever logic user wants
+	static const std::array<const char, 2> m_comment_chars;
+
+	virtual bool is_comment(const inipp::CharTypeErased& chg) const override;
+};
+
+//VisualBasicIni.cpp
+const std::array<const char, 2> VisualBasicIni::m_comment_chars = { inipp::Ini<char>::char_comment, '\'' };
+bool VisualBasicIni::is_comment(const inipp::CharTypeErased& chg) const
+{
+	bool ret = false;
+	for(const auto& c : m_comment_chars)
+	{		
+		if(chg.equals(c))
+		{
+			ret = true;
+		}
+	}
+	return ret;
+}
+
+*/

@@ -91,8 +91,42 @@ inline bool extract(const std::basic_string<CharT> & value, std::basic_string<Ch
 	return true;
 }
 
+template <typename CharT>
+class CharGettable
+{
+public:
+	CharGettable() = default;
+	virtual ~CharGettable() = default;
+
+	void set_char(const CharT* chPtr) const
+	{
+		m_char = chPtr;
+	}
+	void reset_char() const
+	{
+		return set_char(nullptr);
+	}
+
+	const CharT* const get_char() const
+	{
+		return m_char;
+	}
+
+	mutable const CharT* m_char = nullptr;
+};
+
+template <typename CharT>
+class CommentCheckable
+{
+public:
+	CommentCheckable() = default;
+	virtual ~CommentCheckable() = default;
+
+	virtual bool check_char_is_comment() const = 0;
+};
+
 template<class CharT>
-class Ini
+class Ini : protected CommentCheckable<CharT>, protected CharGettable<CharT>
 {
 public:
 	typedef std::basic_string<CharT> String;
@@ -102,16 +136,19 @@ public:
 	Sections sections;
 	std::list<String> errors;
 
-	static const CharT char_section_start  = (CharT)'[';
-	static const CharT char_section_end    = (CharT)']';
-	static const CharT char_assign         = (CharT)'=';
-	static const CharT char_comment        = (CharT)';';
-	static const CharT char_interpol       = (CharT)'$';
-	static const CharT char_interpol_start = (CharT)'{';
-	static const CharT char_interpol_sep   = (CharT)':';
-	static const CharT char_interpol_end   = (CharT)'}';
+	static const CharT char_section_start  = static_cast<CharT>('[');
+	static const CharT char_section_end    = static_cast<CharT>(']');
+	static const CharT char_assign         = static_cast<CharT>('=');
+	static const CharT char_comment		   = static_cast<CharT>(';');
+	static const CharT char_interpol       = static_cast<CharT>('$');
+	static const CharT char_interpol_start = static_cast<CharT>('{');
+	static const CharT char_interpol_sep   = static_cast<CharT>(':');
+	static const CharT char_interpol_end   = static_cast<CharT>('}');
 
 	static const int max_interpolation_depth = 10;
+
+	Ini() = default;
+	virtual ~Ini() = default;
 
 	void generate(std::basic_ostream<CharT> & os) const {
 		for (auto const & sec : sections) {
@@ -134,7 +171,7 @@ public:
 			if (length > 0) {
 				const auto pos = line.find_first_of(char_assign);
 				const auto & front = line.front();
-				if (front == char_comment) {
+				if (is_comment(front)) {
 					continue;
 				}
 				else if (front == char_section_start) {
@@ -185,6 +222,21 @@ public:
 	void clear() {
 		sections.clear();
 		errors.clear();
+	}
+protected:
+	
+	bool is_comment(const CharT& ch) const
+	{
+		set_char(&ch);
+		bool ret = check_char_is_comment();
+		reset_char();
+
+		return ret;
+	}
+
+	virtual bool check_char_is_comment() const override
+	{
+		return *(get_char()) == char_comment;
 	}
 
 private:
